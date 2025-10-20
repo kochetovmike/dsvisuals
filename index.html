@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Data Structure Visualizer</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind to use Inter font --><style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .node-box {
+            transition: all 0.3s ease-in-out;
+            min-width: 60px;
+            height: 60px;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <!-- Sidebar: Controls and DS Selection --><aside id="sidebar" class="w-64 bg-white shadow-xl flex flex-col p-4 space-y-6">
+        <h2 class="text-2xl font-bold text-gray-800 border-b pb-3 mb-2">DS Visualizer</h2>
+        
+        <!-- Data Structure Selector --><div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Select Structure</label>
+            <select id="ds-selector" onchange="changeDS()" class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                <option value="Array">Array (A B C D E)</option>
+                <option value="SinglyLinkedList">Singly-Linked List</option>
+                <option value="DoublyLinkedList">Doubly-Linked List</option>
+                <option value="Stack">Stack (LIFO)</option>
+                <option value="Queue">Queue (FIFO)</option>
+            </select>
+        </div>
+
+        <!-- Interactive Controls --><div id="controls-panel" class="space-y-4 pt-4 border-t">
+            <h3 class="text-lg font-semibold text-gray-800">Interaction</h3>
+
+            <!-- Input Field --><div>
+                <label for="input-value" class="block text-sm font-medium text-gray-700">Value to Add (Number)</label>
+                <input type="number" id="input-value" value="10" placeholder="Enter number" class="mt-1 w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500">
+            </div>
+
+            <!-- Action Buttons (Specific to DS, updated by JS) --><div id="action-buttons" class="space-y-2">
+                <!-- Buttons will be dynamically inserted here --></div>
+        </div>
+
+        <!-- Operation Log --><div class="flex-grow pt-4 border-t overflow-y-auto">
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Log</h3>
+            <ul id="log-list" class="text-xs text-gray-600 space-y-1">
+                <!-- Log entries appear here --></ul>
+        </div>
+    </aside>
+
+    <!-- Main Content: Visualizer --><main class="flex-grow p-8 overflow-auto">
+        <div class="flex flex-col h-full bg-white p-6 rounded-xl shadow-2xl">
+            <h1 class="text-3xl font-extrabold text-gray-900 mb-6" id="ds-title">Array (A B C D E)</h1>
+            
+            <!-- Visualization Area --><div id="visualizer-area" class="flex-grow border-4 border-dashed border-gray-200 rounded-lg p-4 flex items-center justify-start overflow-x-auto">
+                <!-- Data Structure Visualization goes here --></div>
+        </div>
+    </main>
+
+    <script>
+        // Global state for Firebase (Required for persistence in the environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let currentDS = {};
+        let currentDSKey = 'Array';
+        const logList = document.getElementById('log-list');
+
+        // --- Core Data Structure Classes ---
+
+        class Node {
+            constructor(data, next = null, prev = null) {
+                this.id = Date.now() + Math.random();
+                this.data = data;
+                this.next = next;
+                this.prev = prev;
+            }
+        }
+
+        class SinglyLinkedList {
+            constructor(initialData = []) {
+                this.head = null;
+                this.size = 0;
+                initialData.forEach(d => this.insertLast(d));
+            }
+            insertLast(data) {
+                const newNode = new Node(data);
+                if (!this.head) {
+                    this.head = newNode;
+                } else {
+                    let current = this.head;
+                    while (current.next) {
+                        current = current.next;
+                    }
+                    current.next = newNode;
+                }
+                this.size++;
+                return true;
+            }
+            deleteFirst() {
+                if (!this.head) return null;
+                const removedData = this.head.data;
+                this.head = this.head.next;
+                this.size--;
+                return removedData;
+            }
+            toArray() {
+                const arr = [];
+                let current = this.head;
+                while (current) {
+                    arr.push(current);
+                    current = current.next;
+                }
+                return arr;
+            }
+        }
+
+        class DoublyLinkedList extends SinglyLinkedList {
+            insertLast(data) {
+                const newNode = new Node(data);
+                if (!this.head) {
+                    this.head = newNode;
+                } else {
+                    let current = this.head;
+                    while (current.next) {
+                        current = current.next;
+                    }
+                    current.next = newNode;
+                    newNode.prev = current;
+                }
+                this.size++;
+                return true;
+            }
+        }
+
+        class Stack {
+            constructor(initialData = []) {
+                this.items = [];
+                initialData.forEach(d => this.push(d));
+            }
+            push(element) {
+                this.items.push(element); // Add to the end (Top)
+                return true;
+            }
+            pop() {
+                if (this.isEmpty()) return null;
+                return this.items.pop(); // Remove from the end (Top)
+            }
+            peek() {
+                return this.isEmpty() ? null : this.items[this.items.length - 1];
+            }
+            isEmpty() {
+                return this.items.length === 0;
+            }
+            toArray() { return this.items; }
+        }
+
+        class Queue {
+            constructor(initialData = []) {
+                this.items = [];
+                initialData.forEach(d => this.enqueue(d));
+            }
+            enqueue(element) {
+                this.items.push(element); // Add to the end (Rear)
+                return true;
+            }
+            dequeue() {
+                if (this.isEmpty()) return null;
+                return this.items.shift(); // Remove from the front (Front)
+            }
+            front() {
+                return this.isEmpty() ? null : this.items[0];
+            }
+            isEmpty() {
+                return this.items.length === 0;
+            }
+            toArray() { return this.items; }
+        }
+
+        class ArrayDS {
+            constructor(initialData = []) {
+                this.items = initialData;
+            }
+            insertLast(element) {
+                this.items.push(element);
+                return true;
+            }
+            deleteLast() {
+                if (this.items.length === 0) return null;
+                return this.items.pop();
+            }
+            toArray() { return this.items; }
+        }
+
+        // --- Visualization Functions ---
+
+        const visualizerArea = document.getElementById('visualizer-area');
+        const dsTitle = document.getElementById('ds-title');
+
+        function drawArray(ds) {
+            // Updated: justify-center for horizontal centering
+            visualizerArea.className = 'flex-grow border-4 border-dashed border-gray-200 rounded-lg p-4 flex items-center justify-center overflow-x-auto space-x-0';
+            const html = ds.items.map((data, index) => `
+                <div class="relative flex flex-col items-center mx-1">
+                    <div class="node-box bg-purple-500 text-white rounded-lg shadow-xl flex items-center justify-center font-mono text-xl font-bold border-2 border-purple-700 hover:scale-105">
+                        ${data}
+                    </div>
+                    <div class="text-xs mt-1 bg-gray-700 text-white px-2 py-0.5 rounded-full">Index ${index}</div>
+                </div>
+            `).join('');
+            visualizerArea.innerHTML = html;
+        }
+
+        function drawLinkedList(ds, isDoubly = false) {
+            // Updated: justify-center for horizontal centering
+            visualizerArea.className = 'flex-grow border-4 border-dashed border-gray-200 rounded-lg p-4 flex items-center justify-center overflow-x-auto space-x-0';
+            const nodes = ds.toArray();
+
+            const html = nodes.map((node, index) => {
+                const isHead = index === 0;
+                const isTail = index === nodes.length - 1;
+                
+                // --- 1. NEXT Pointer/NULL Visualization (To the right) ---
+                let nextVisual = '';
+                if (!isTail) {
+                    // Standard Next Pointer (Arrow to the right)
+                    nextVisual = `
+                        <div class="h-0.5 w-12 bg-gray-500 relative ml-4 mr-4">
+                            <div class="absolute right-0 top-1/2 -mt-2 w-0 h-0 border-t-4 border-b-4 border-l-8 border-gray-500"></div>
+                            <span class="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-gray-600">next</span>
+                        </div>
+                    `;
+                } else {
+                    // Next Pointer is NULL (Tail node)
+                    nextVisual = `
+                        <div class="h-0.5 w-12 relative ml-4 mr-4 flex items-center justify-start">
+                            <span class="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-red-600">next</span>
+                            <div class="text-sm font-bold text-gray-700">NULL</div>
+                        </div>
+                    `;
+                }
+
+                // --- 2. PREV Pointer/NULL Visualization (To the left, only for Doubly) ---
+                let prevVisual = '';
+                if (isDoubly) {
+                    if (isHead) {
+                        // Prev Pointer is NULL (Head node)
+                        // Positioned absolutely to the left of the node box
+                        prevVisual = `
+                            <div class="absolute top-4 left-0 w-12 h-0.5 transform -translate-x-full flex items-center justify-end" style="margin-top: 12px;">
+                                <span class="absolute -top-5 right-0 text-xs font-semibold text-red-600">prev</span>
+                                <div class="text-sm font-bold text-gray-700">NULL</div>
+                            </div>
+                        `;
+                    } else {
+                        // Standard Prev Pointer (Arrow from the left)
+                        prevVisual = `
+                            <div class="absolute bottom-1/2 left-0 w-8 h-0.5 bg-yellow-500 transform -translate-x-full">
+                                <div class="absolute left-0 top-0 -mt-2 w-0 h-0 border-t-4 border-b-4 border-r-8 border-yellow-500"></div>
+                                <span class="absolute -top-0 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-gray-600">prev</span>
+                            </div>
+                        `;
+                    }
+                }
+                
+                return `
+                    <div class="flex items-center">
+                        <div class="relative flex flex-col items-center">
+                            <!-- HEAD Label -->${isHead ? '<div class="absolute -top-6 text-sm font-bold text-green-600">HEAD</div>' : ''}
+                            
+                            ${prevVisual}
+                            
+                            <div class="node-box bg-blue-500 text-white rounded-lg shadow-xl flex items-center justify-center font-mono text-xl font-bold border-2 border-blue-700 hover:scale-105">
+                                ${node.data}
+                            </div>
+                        </div>
+                        ${nextVisual}
+                    </div>
+                `;
+            }).join('');
+            visualizerArea.innerHTML = html || '<div class="text-gray-400">List is Empty. Add a node!</div>';
+        }
+
+        function drawStackQueue(ds, isStack) {
+            // Stack (Vertical) or Queue (Horizontal)
+            const items = ds.toArray().slice().reverse(); // Reverse for stack visualization (top is on top)
+
+            if (!isStack) {
+                // Queue: Horizontal - Updated: justify-center
+                visualizerArea.className = 'flex-grow border-4 border-dashed border-gray-200 rounded-lg p-4 flex items-center justify-center overflow-x-auto space-x-0';
+                const html = ds.toArray().map((data, index) => {
+                    const isFront = index === 0;
+                    const isRear = index === ds.toArray().length - 1;
+                    return `
+                        <div class="flex flex-col items-center mx-1">
+                            ${isFront ? '<div class="text-sm font-bold text-green-600 mb-1">FRONT (Dequeue)</div>' : ''}
+                            <div class="node-box bg-teal-500 text-white rounded-lg shadow-xl flex items-center justify-center font-mono text-xl font-bold border-2 border-teal-700 hover:scale-105">
+                                ${data}
+                            </div>
+                            ${isRear ? '<div class="text-sm font-bold text-red-600 mt-1">REAR (Enqueue)</div>' : ''}
+                        </div>
+                    `;
+                }).join('');
+                visualizerArea.innerHTML = html || '<div class="text-gray-400">Queue is Empty. Enqueue an element!</div>';
+
+            } else {
+                // Stack: Vertical - Updated: items-center for horizontal centering of the vertical stack
+                visualizerArea.className = 'flex-grow border-4 border-dashed border-gray-200 rounded-lg p-4 flex flex-col items-center justify-end overflow-y-auto space-y-0';
+                const html = items.map((data, index) => {
+                    const isTop = index === 0;
+                    return `
+                        <div class="flex flex-col items-center my-1">
+                            ${isTop ? '<div class="text-sm font-bold text-red-600 mb-1">TOP (Push/Pop)</div>' : ''}
+                            <div class="node-box bg-indigo-500 text-white rounded-lg shadow-xl flex items-center justify-center font-mono text-xl font-bold border-2 border-indigo-700 hover:scale-105">
+                                ${data}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                visualizerArea.innerHTML = html || '<div class="text-gray-400">Stack is Empty. Push an element!</div>';
+            }
+        }
+
+
+        // --- Interaction Logic and Rendering ---
+
+        function logOperation(dsName, action, value = '') {
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const valueText = value !== '' ? ` (Value: ${value})` : '';
+            const li = document.createElement('li');
+            li.className = 'p-1 bg-gray-50 rounded';
+            li.innerHTML = `<strong>[${timestamp}]</strong> ${dsName}: <strong>${action}</strong>${valueText}`;
+            
+            // Prepend to the list (newest on top)
+            if (logList.firstChild) {
+                logList.insertBefore(li, logList.firstChild);
+            } else {
+                logList.appendChild(li);
+            }
+        }
+
+        function render() {
+            dsTitle.textContent = document.getElementById('ds-selector').options[document.getElementById('ds-selector').selectedIndex].textContent;
+            
+            const buttonsPanel = document.getElementById('action-buttons');
+            let buttonsHtml = '';
+            
+            switch (currentDSKey) {
+                case 'Array':
+                    drawArray(currentDS);
+                    buttonsHtml = `
+                        <button onclick="operateDS('insert')" class="w-full bg-green-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-green-600 transition-colors">Add to End</button>
+                        <button onclick="operateDS('delete')" class="w-full bg-red-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-red-600 transition-colors">Delete Last</button>
+                    `;
+                    break;
+                case 'SinglyLinkedList':
+                case 'DoublyLinkedList':
+                    drawLinkedList(currentDS, currentDSKey === 'DoublyLinkedList');
+                    buttonsHtml = `
+                        <button onclick="operateDS('insert')" class="w-full bg-green-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-green-600 transition-colors">Insert Node (Last)</button>
+                        <button onclick="operateDS('delete')" class="w-full bg-red-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-red-600 transition-colors">Delete Node (First)</button>
+                    `;
+                    break;
+                case 'Stack':
+                    drawStackQueue(currentDS, true);
+                    buttonsHtml = `
+                        <button onclick="operateDS('push')" class="w-full bg-green-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-green-600 transition-colors">Push (Add)</button>
+                        <button onclick="operateDS('pop')" class="w-full bg-red-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-red-600 transition-colors">Pop (Remove)</button>
+                    `;
+                    break;
+                case 'Queue':
+                    drawStackQueue(currentDS, false);
+                    buttonsHtml = `
+                        <button onclick="operateDS('enqueue')" class="w-full bg-green-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-green-600 transition-colors">Enqueue (Add)</button>
+                        <button onclick="operateDS('dequeue')" class="w-full bg-red-500 text-white py-2 rounded-lg font-semibold shadow-md hover:bg-red-600 transition-colors">Dequeue (Remove)</button>
+                    `;
+                    break;
+            }
+            buttonsPanel.innerHTML = buttonsHtml;
+        }
+
+        function operateDS(operation) {
+            const inputField = document.getElementById('input-value');
+            const inputValue = parseInt(inputField.value);
+            let result;
+
+            // Handle operations based on DS type and requested action
+            if (['insert', 'push', 'enqueue'].includes(operation)) {
+                if (isNaN(inputValue)) {
+                    logOperation(currentDSKey, 'ERROR: Invalid input value');
+                    return;
+                }
+                
+                if (currentDSKey === 'Array' || currentDSKey === 'SinglyLinkedList' || currentDSKey === 'DoublyLinkedList') {
+                    result = currentDS.insertLast(inputValue);
+                } else if (currentDSKey === 'Stack') {
+                    result = currentDS.push(inputValue);
+                } else if (currentDSKey === 'Queue') {
+                    result = currentDS.enqueue(inputValue);
+                }
+                
+                if (result) {
+                    logOperation(currentDSKey, operation.toUpperCase(), inputValue);
+                    
+                    // Increment the input value by 1 for the next operation
+                    const newValue = inputValue + 1;
+                    inputField.value = newValue;
+                }
+
+            } else if (['delete', 'pop', 'dequeue'].includes(operation)) {
+                let removedValue = null;
+                
+                if (currentDSKey === 'Array') {
+                    removedValue = currentDS.deleteLast();
+                } else if (currentDSKey === 'SinglyLinkedList' || currentDSKey === 'DoublyLinkedList') {
+                    removedValue = currentDS.deleteFirst();
+                } else if (currentDSKey === 'Stack') {
+                    removedValue = currentDS.pop();
+                } else if (currentDSKey === 'Queue') {
+                    removedValue = currentDS.dequeue();
+                }
+
+                if (removedValue !== null) {
+                    logOperation(currentDSKey, operation.toUpperCase(), `Removed: ${removedValue}`);
+                } else {
+                    logOperation(currentDSKey, 'EMPTY: Cannot remove from empty structure');
+                }
+            }
+
+            render();
+        }
+
+
+        function initializeDS() {
+            currentDSKey = document.getElementById('ds-selector').value;
+            switch (currentDSKey) {
+                case 'Array':
+                    currentDS = new ArrayDS(['A', 'B', 'C', 'D', 'E']);
+                    break;
+                case 'SinglyLinkedList':
+                    currentDS = new SinglyLinkedList([10, 20, 30]);
+                    break;
+                case 'DoublyLinkedList':
+                    currentDS = new DoublyLinkedList([15, 25, 35]);
+                    break;
+                case 'Stack':
+                    currentDS = new Stack([5, 4, 3]); // Bottom to Top
+                    break;
+                case 'Queue':
+                    currentDS = new Queue([1, 2, 3]); // Front to Rear
+                    break;
+                default:
+                    currentDS = new ArrayDS(['A', 'B', 'C', 'C', 'D']);
+            }
+            logList.innerHTML = '';
+            logOperation(currentDSKey, 'Initialized');
+            render();
+        }
+
+        function changeDS() {
+            initializeDS();
+        }
+
+        // Initialize on load
+        window.onload = initializeDS;
+
+    </script>
+</body>
+</html>
